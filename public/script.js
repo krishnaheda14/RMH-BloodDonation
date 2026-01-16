@@ -354,6 +354,89 @@ function initDashboard() {
     }
 
     /**
+     * Shows a professional celebration notification for new donor
+     */
+    function showCelebrationNotification(donorName, bloodGroup) {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = 'new-donor-notification';
+        notification.innerHTML = `
+            <div class="notification-header">
+                <div class="notification-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 21C12 21 3 13.5 3 8.5C3 5.5 5.5 3 8.5 3C10.5 3 12 4.5 12 4.5C12 4.5 13.5 3 15.5 3C18.5 3 21 5.5 21 8.5C21 13.5 12 21 12 21Z" fill="currentColor"/>
+                    </svg>
+                </div>
+                <div class="notification-text">
+                    <h3>New Donor!</h3>
+                </div>
+            </div>
+            <div class="notification-body">
+                <div class="donor-name-display">
+                    <div class="name">${escapeHtml(donorName)}</div>
+                    <div class="subtitle">Thank you for saving lives</div>
+                </div>
+                <div class="notification-badge">${escapeHtml(bloodGroup)}</div>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+
+        // Trigger confetti effect
+        createConfetti();
+
+        // Animate stat card
+        const primaryCard = document.querySelector('.primary-card');
+        if (primaryCard) {
+            primaryCard.classList.add('celebrate');
+            setTimeout(() => primaryCard.classList.remove('celebrate'), 600);
+        }
+
+        // Show notification
+        setTimeout(() => notification.classList.add('show'), 100);
+
+        // Hide and remove notification after 5 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 500);
+        }, 5000);
+    }
+
+    /**
+     * Creates elegant confetti effect
+     */
+    function createConfetti() {
+        const container = document.createElement('div');
+        container.className = 'confetti-container';
+        document.body.appendChild(container);
+
+        const colors = ['#DC143C', '#FF4D6A', '#FF6B6B', '#FFFFFF'];
+        const confettiCount = 50;
+
+        for (let i = 0; i < confettiCount; i++) {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.left = Math.random() * 100 + '%';
+            confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+            confetti.style.animationDelay = Math.random() * 0.3 + 's';
+            confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            
+            // Random shapes
+            if (Math.random() > 0.5) {
+                confetti.style.borderRadius = '50%';
+            }
+
+            container.appendChild(confetti);
+            
+            // Trigger animation
+            setTimeout(() => confetti.classList.add('animate'), 10);
+        }
+
+        // Remove container after animation
+        setTimeout(() => container.remove(), 5000);
+    }
+
+    /**
      * Fetches the latest donor and shows popup
      */
     async function fetchLatestDonorAndShowPopup() {
@@ -361,6 +444,7 @@ function initDashboard() {
             const response = await apiRequest('/api/donors?limit=1');
             if (response.data && response.data.length > 0) {
                 const latestDonor = response.data[0];
+                showCelebrationNotification(latestDonor.fullName, latestDonor.bloodGroup);
                 showThankYouPopup(latestDonor.fullName, latestDonor.bloodGroup);
             }
         } catch (error) {
@@ -452,6 +536,9 @@ function initDashboard() {
 
     // Initialize slogans carousel
     initSlogansCarousel();
+    
+    // Initialize all donors modal
+    initAllDonorsModal();
 }
 
 /**
@@ -493,6 +580,160 @@ function initSlogansCarousel() {
         indicator.addEventListener('click', () => {
             showQuote(index);
         });
+    });
+}
+
+/**
+ * Initializes the all donors modal
+ */
+function initAllDonorsModal() {
+    const modal = document.getElementById('allDonorsModal');
+    const openBtn = document.getElementById('viewAllDonorsBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const backdrop = document.getElementById('modalBackdrop');
+    const searchInput = document.getElementById('donorSearch');
+    const content = document.getElementById('allDonorsContent');
+    const countEl = document.getElementById('donorCount');
+
+    if (!modal || !openBtn) return;
+
+    let allDonors = [];
+
+    /**
+     * Formats date for display
+     */
+    function formatDonorDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    /**
+     * Renders donors table
+     */
+    function renderDonors(donors) {
+        if (donors.length === 0) {
+            content.innerHTML = `
+                <div class="no-results">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <p>No donors found</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = `
+            <div class="donors-table">
+                <div class="donors-table-header">
+                    <span>Name</span>
+                    <span>Blood Group</span>
+                    <span>Date</span>
+                </div>
+                ${donors.map((donor, index) => `
+                    <div class="donor-row" style="animation-delay: ${index * 0.03}s">
+                        <span class="donor-name">${escapeHtml(donor.fullName)}</span>
+                        <span class="donor-blood">${escapeHtml(donor.bloodGroup)}</span>
+                        <span class="donor-date">${formatDonorDate(donor.donatedAt)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        content.innerHTML = html;
+    }
+
+    /**
+     * Filters donors based on search
+     */
+    function filterDonors(searchTerm) {
+        const filtered = allDonors.filter(donor => {
+            const name = donor.fullName.toLowerCase();
+            const blood = donor.bloodGroup.toLowerCase();
+            const term = searchTerm.toLowerCase();
+            return name.includes(term) || blood.includes(term);
+        });
+        renderDonors(filtered);
+    }
+
+    /**
+     * Fetches all donors from API
+     */
+    async function loadAllDonors() {
+        try {
+            content.innerHTML = `
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <span>Loading all donors...</span>
+                </div>
+            `;
+
+            const response = await apiRequest('/api/donors?limit=1000');
+            allDonors = response.data;
+            
+            countEl.textContent = `${allDonors.length} ${allDonors.length === 1 ? 'donor' : 'donors'} registered`;
+            renderDonors(allDonors);
+
+        } catch (error) {
+            console.error('Failed to load all donors:', error);
+            content.innerHTML = `
+                <div class="no-results">
+                    <p>Failed to load donors. Please try again.</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Opens modal
+     */
+    function openModal() {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+        loadAllDonors();
+    }
+
+    /**
+     * Closes modal
+     */
+    function closeModal() {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+        searchInput.value = '';
+        allDonors = [];
+    }
+
+    /**
+     * Escapes HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Event listeners
+    openBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+
+    // Search functionality
+    searchInput.addEventListener('input', (e) => {
+        filterDonors(e.target.value);
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('show')) {
+            closeModal();
+        }
     });
 }
 

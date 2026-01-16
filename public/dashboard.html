@@ -44,6 +44,15 @@
                     </div>
                 </div>
                 <div class="header-badge">
+                    <button class="view-all-btn" id="viewAllDonorsBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <span>View All Donors</span>
+                    </button>
                     <div class="live-indicator">
                         <span class="live-dot"></span>
                         <span>LIVE</span>
@@ -226,6 +235,44 @@
                     <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
                 </svg>
                 <p>The blood you donate gives someone another chance at life.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Donors Modal -->
+    <div class="all-donors-modal" id="allDonorsModal">
+        <div class="modal-backdrop" id="modalBackdrop"></div>
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title-section">
+                    <div class="modal-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>All Donors</h2>
+                        <p class="modal-subtitle" id="donorCount">Loading...</p>
+                    </div>
+                </div>
+                <button class="close-modal-btn" id="closeModalBtn" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-search">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" id="donorSearch" placeholder="Search by name or blood group..." />
+            </div>
+            <div class="modal-content" id="allDonorsContent">
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <span>Loading all donors...</span>
+                </div>
             </div>
         </div>
     </div>

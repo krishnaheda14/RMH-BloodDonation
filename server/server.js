@@ -432,7 +432,23 @@ async function startServer() {
     });
 }
 
-startServer();
+// If run directly (node server/server.js), start the local server.
+if (require.main === module) {
+    startServer();
+} else {
+    // Export a Vercel-compatible serverless handler
+    module.exports = async (req, res) => {
+        try {
+            if (!mongoClient) {
+                await initMongo();
+            }
+            return app(req, res);
+        } catch (e) {
+            console.error('Error in serverless handler init:', e && e.stack ? e.stack : e);
+            return respondError(res, 500, 'Server error during initialization', e);
+        }
+    };
+}
 
 // Global error handlers for debugging
 process.on('unhandledRejection', (reason, promise) => {

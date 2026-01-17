@@ -13,7 +13,7 @@ const app = express();
 
 // Configuration
 const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || null;
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:PHBXsQjLfePb3jo4@db.lwgnhieekdjtnvpxqull.supabase.co:5432/postgres';
 
 // Postgres pool (create only if DATABASE_URL provided)
 let pool = null;

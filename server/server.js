@@ -18,10 +18,12 @@ const PORT = process.env.PORT || 3000;
 // Wrap in try/catch so absence of the `dotenv` package doesn't crash production.
 try {
     if (process.env.NODE_ENV !== 'production') {
-        require('dotenv').config();
+        require('dotenv').config({ path: path.join(__dirname, '.env') });
+        console.log('📝 Loaded .env file from:', path.join(__dirname, '.env'));
     }
 } catch (e) {
     // dotenv not installed or failed to load — ignore in production environments
+    console.log('⚠️  dotenv not loaded:', e.message);
 }
 
 // Use only the environment-provided DATABASE_URL. Do NOT fall back to a hardcoded value.
@@ -30,7 +32,12 @@ const DATABASE_URL = process.env.DATABASE_URL;
 // Postgres pool (create only if DATABASE_URL provided)
 let pool = null;
 if (DATABASE_URL) {
-    pool = new Pool({ connectionString: DATABASE_URL });
+    pool = new Pool({
+        connectionString: DATABASE_URL,
+        ssl: {
+            rejectUnauthorized: false
+        }
+    });
 } else {
     console.warn('⚠️  No DATABASE_URL provided. Database features will be disabled.');
 }

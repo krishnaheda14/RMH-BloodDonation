@@ -435,20 +435,24 @@ async function startServer() {
 // If run directly (node server/server.js), start the local server.
 if (require.main === module) {
     startServer();
-} else {
-    // Export a Vercel-compatible serverless handler
-    module.exports = async (req, res) => {
-        try {
-            if (!mongoClient) {
-                await initMongo();
-            }
-            return app(req, res);
-        } catch (e) {
-            console.error('Error in serverless handler init:', e && e.stack ? e.stack : e);
-            return respondError(res, 500, 'Server error during initialization', e);
-        }
-    };
 }
+
+// Export a Vercel-compatible serverless handler and the express `app`.
+// Export handler at top-level so Vercel detects exports even if initialization is delayed.
+module.exports = async function vercelHandler(req, res) {
+    try {
+        if (!mongoClient) {
+            await initMongo();
+        }
+        return app(req, res);
+    } catch (e) {
+        console.error('Error in serverless handler init:', e && e.stack ? e.stack : e);
+        return respondError(res, 500, 'Server error during initialization', e);
+    }
+};
+
+// Also provide the raw express app for other hosting environments
+module.exports.app = app;
 
 // Global error handlers for debugging
 process.on('unhandledRejection', (reason, promise) => {

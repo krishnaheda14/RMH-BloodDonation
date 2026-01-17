@@ -13,7 +13,19 @@ const app = express();
 
 // Configuration
 const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:PHBXsQjLfePb3jo4@db.lwgnhieekdjtnvpxqull.supabase.co:5432/postgres';
+
+// Load environment variables from .env during development (optional).
+// Wrap in try/catch so absence of the `dotenv` package doesn't crash production.
+try {
+    if (process.env.NODE_ENV !== 'production') {
+        require('dotenv').config();
+    }
+} catch (e) {
+    // dotenv not installed or failed to load — ignore in production environments
+}
+
+// Use only the environment-provided DATABASE_URL. Do NOT fall back to a hardcoded value.
+const DATABASE_URL = process.env.DATABASE_URL;
 
 // Postgres pool (create only if DATABASE_URL provided)
 let pool = null;

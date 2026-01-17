@@ -83,8 +83,9 @@ html {
 
 body {
     font-family: var(--font-family);
-    background: var(--gray-900);
-    color: var(--white);
+    background: linear-gradient(180deg, #FFF5F5 0%, #FFFFFF 50%, #FFF5F5 100%);
+    color: #000000;
+    font-size: 18px;
     line-height: 1.6;
     min-height: 100vh;
     overflow-x: hidden;
@@ -93,29 +94,9 @@ body {
 /* ============================================
    ANIMATED BACKGROUND
    ============================================ */
-.dashboard-bg {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-}
 
-.bg-gradient {
-    position: absolute;
-    inset: 0;
-    background: 
-        radial-gradient(ellipse at 20% 20%, rgba(220, 20, 60, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 80%, rgba(220, 20, 60, 0.1) 0%, transparent 50%),
-        linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%);
-}
-
-.bg-pattern {
-    position: absolute;
-    inset: 0;
-    background-image: 
-        radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0);
-    background-size: 40px 40px;
-}
+/* Remove dark animated background for light-only UI */
+.dashboard-bg { display: none; }
 
 .floating-shapes {
     position: absolute;
@@ -241,9 +222,9 @@ body {
 }
 
 .brand-text h1 {
-    font-size: 1.5rem;
+    font-size: 2.5rem;
     font-weight: 700;
-    color: var(--white);
+    color: #000000;
     letter-spacing: -0.02em;
 }
 
@@ -350,6 +331,16 @@ body {
     }
 }
 
+/* Theme toggle button */
+/* Light-only UI: default styles */
+.dashboard-bg { display: none; }
+.brand-text h1 { color: #000000; font-weight: 700; }
+.brand-subtitle { color: #000000; font-weight: 500; }
+.stat-card { background: var(--white); border-color: var(--gray-200); color: #000000; }
+.primary-card { background: linear-gradient(135deg, rgba(220,20,60,0.06) 0%, rgba(220,20,60,0.02) 100%); }
+.view-all-btn, .live-indicator { background: var(--gray-100); color: #000000; border-color: var(--gray-300); font-weight: 600; }
+.dashboard-wrapper { background: transparent; }
+
 /* Stat Card Base */
 .stat-card {
     position: relative;
@@ -358,6 +349,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-xl);
     overflow: hidden;
+    min-height: 380px;
     transition: transform var(--transition-base), box-shadow var(--transition-base);
 }
 
@@ -366,8 +358,17 @@ body {
     box-shadow: var(--shadow-xl);
 }
 
+/* Dashboard-specific logo tweaks */
+.dashboard-header .site-logo {
+    height: 80px;
+    margin-left: 12px;
+    border-radius: 8px;
+}
+
+.dashboard-header .site-logo { filter: none; }
+
 .card-content {
-    padding: var(--space-5);
+    padding: var(--space-8);
     position: relative;
     z-index: 1;
 }
@@ -426,9 +427,9 @@ body {
 }
 
 .stat-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--gray-400);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #000000;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -442,28 +443,22 @@ body {
 }
 
 .stat-value {
-    font-size: 3rem;
+    font-size: 5.5rem;
     font-weight: 800;
-    color: var(--white);
+    color: #000000;
     line-height: 1;
     letter-spacing: -0.02em;
-    background: linear-gradient(180deg, #FFFFFF 0%, #E5E5E5 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
 }
 
 .primary-card .stat-value {
-    font-size: 3.5rem;
-    background: linear-gradient(135deg, #FFFFFF 0%, #FF8A9B 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
+    font-size: 6rem;
+    color: #000000;
 }
 
 .stat-suffix {
     font-size: 1.125rem;
-    font-weight: 500;
-    color: var(--gray-400);
+    font-weight: 600;
+    color: #000000;
 }
 
 /* Stat Description */
@@ -520,8 +515,9 @@ body {
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
-    color: var(--gray-500);
+    color: #000000;
     font-size: 0.8125rem;
+    font-weight: 500;
     animation: slideUp 0.6s ease-out 0.2s both;
 }
 
@@ -567,9 +563,9 @@ body {
 }
 
 .section-header h2 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--white);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #000000;
 }
 
 /* ============================================
@@ -615,7 +611,7 @@ body {
 .quote-slide blockquote {
     font-size: 1rem;
     font-weight: 500;
-    color: var(--gray-200);
+    color: #000000;
     font-style: italic;
     line-height: 1.4;
     max-width: 600px;
@@ -666,8 +662,8 @@ body {
 .donor-chip {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    gap: var(--space-3);
+    padding: calc(var(--space-3) * 1.25) var(--space-5);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-full);
@@ -682,16 +678,16 @@ body {
 }
 
 .donor-chip .donor-name {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--gray-200);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #000000;
 }
 
 .donor-chip .blood-badge {
-    padding: var(--space-1) var(--space-2);
+    padding: calc(var(--space-1) * 1.25) var(--space-2);
     background: var(--primary);
     border-radius: var(--radius-sm);
-    font-size: 0.75rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--white);
 }
@@ -749,8 +745,8 @@ body {
 
 .footer-message {
     font-size: 1rem;
-    font-weight: 500;
-    color: var(--gray-300);
+    font-weight: 600;
+    color: #000000;
     margin-bottom: var(--space-4);
 }
 
@@ -764,7 +760,23 @@ body {
 
 .copyright {
     font-size: 0.75rem;
-    color: var(--gray-600);
+    color: #000000;
+    font-weight: 500;
+}
+
+.footer-slogans {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 0.7rem;
+    color: #666666;
+    font-weight: 500;
+}
+
+.footer-slogans span:not(:nth-child(2)):not(:nth-child(4)) {
+    font-style: italic;
 }
 
 /* ============================================

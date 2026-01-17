@@ -39,11 +39,13 @@
                         </svg>
                     </div>
                     <div class="brand-text">
-                        <h1>Blood Donation Drive</h1>
-                        <span class="brand-subtitle">Real-Time Statistics Dashboard</span>
+                                <h1>Blood Donation Drive</h1>
+                                <span class="brand-subtitle">Real-Time Statistics Dashboard</span>
+                        
                     </div>
                 </div>
-                <div class="header-badge">
+                <img src="/logo.png" alt="Logo" class="site-logo" />
+                    <div class="header-badge">
                     <button class="view-all-btn" id="viewAllDonorsBtn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -57,6 +59,7 @@
                         <span class="live-dot"></span>
                         <span>LIVE</span>
                     </div>
+                    
                 </div>
             </div>
         </header>
@@ -128,7 +131,25 @@
                 <span id="lastUpdated">Updating...</span>
             </div>
 
-            <!-- Awareness Section -->
+            <!-- Recent Donors Section -->
+            <section class="donors-section">
+                <div class="section-header">
+                    <div class="section-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                    </div>
+                    <h2>Our Heroes</h2>
+                </div>
+                <div class="donors-grid" id="donorsList">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <span>Loading recent donors...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Awareness Section (moved to bottom) -->
             <section class="awareness-section">
                 <div class="section-header">
                     <div class="section-icon">
@@ -165,30 +186,19 @@
                     </div>
                 </div>
             </section>
-
-            <!-- Recent Donors Section -->
-            <section class="donors-section">
-                <div class="section-header">
-                    <div class="section-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                        </svg>
-                    </div>
-                    <h2>Our Heroes</h2>
-                </div>
-                <div class="donors-grid" id="donorsList">
-                    <div class="loading-state">
-                        <div class="loading-spinner"></div>
-                        <span>Loading recent donors...</span>
-                    </div>
-                </div>
-            </section>
         </main>
 
         <!-- Footer -->
         <footer class="dashboard-footer">
             <div class="footer-content">
                 <p class="footer-message">Together, we can make a difference</p>
+                <div class="footer-slogans">
+                    <span>Donate blood, save lives</span>
+                    <span>•</span>
+                    <span>Be someone's hero</span>
+                    <span>•</span>
+                    <span>The gift of life</span>
+                </div>
                 <div class="footer-divider"></div>
                 <p class="copyright">Blood Donation Drive 2026. All rights reserved.</p>
             </div>

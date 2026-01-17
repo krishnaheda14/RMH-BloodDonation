@@ -1,23 +1,22 @@
 /**
- * Blood Donation Event Website - Server
- * Express.js backend with MongoDB integration
+ * Blood Donation Event Website - Server (Postgres)
+ * Express.js backend using Postgres (pg)
  */
 
 const express = require('express');
-const mongoose = require('mongoose');
+const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
-
-// Import models
-const Donor = require('./models/Donor');
-const Stats = require('./models/Stats');
 
 // Initialize Express app
 const app = express();
 
 // Configuration
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/blood_donation';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:PHBXsQjLfePb3jo4@db.lwgnhieekdjtnvpxqull.supabase.co:5432/postgres';
+
+// Postgres pool
+const pool = new Pool({ connectionString: DATABASE_URL });
 
 // Middleware
 app.use(cors());
@@ -27,19 +26,23 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-/**
- * Connect to MongoDB
- */
-async function connectDB() {
+// Logo is now served from public/logo.png as static file
+
+async function initDB() {
     try {
-        await mongoose.connect(MONGODB_URI);
-        console.log('✅ Connected to MongoDB successfully');
-        
-        // Initialize stats document if it doesn't exist
-        await Stats.getStats();
-        console.log('✅ Stats collection initialized');
+        await pool.query('SELECT 1');
+        console.log('✅ Connected to Postgres successfully');
+
+        // Ensure stats row exists
+        await pool.query(
+            `INSERT INTO stats (identifier, total_blood_units)
+             VALUES ('global', 0)
+             ON CONFLICT (identifier) DO NOTHING;`
+        );
+
+        console.log('✅ Stats row ensured');
     } catch (error) {
-        console.error('❌ MongoDB connection error:', error.message);
+        console.error('❌ Postgres connection error:', error.message);
         process.exit(1);
     }
 }
@@ -48,10 +51,6 @@ async function connectDB() {
 // API ROUTES
 // ============================================
 
-/**
- * POST /api/donate
- * Register a new blood donor and increment count
- */
 app.post('/api/donate', async (req, res) => {
     try {
         const { fullName, bloodGroup, age, year } = req.body;
@@ -64,45 +63,35 @@ app.post('/api/donate', async (req, res) => {
             });
         }
 
-        // Validate age
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 18) {
-            return res.status(400).json({
-                success: false,
-                message: 'Donor must be at least 18 years old'
-            });
+            return res.status(400).json({ success: false, message: 'Donor must be at least 18 years old' });
         }
 
-        // Validate blood group
         const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
         if (!validBloodGroups.includes(bloodGroup)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid blood group'
-            });
+            return res.status(400).json({ success: false, message: 'Invalid blood group' });
         }
 
-        // Validate year
         const validYears = ['FY', 'SY', 'TY', 'Final Year'];
         if (!validYears.includes(year)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid year selection'
-            });
+            return res.status(400).json({ success: false, message: 'Invalid year selection' });
         }
 
-        // Create new donor record
-        const donor = new Donor({
-            fullName: fullName.trim(),
-            bloodGroup,
-            age: ageNum,
-            year
-        });
+        // Insert donor into Postgres
+        const insertText = `
+            INSERT INTO donors (full_name, blood_group, age, year)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, full_name, blood_group, donated_at;
+        `;
 
-        await donor.save();
+        const insertResult = await pool.query(insertText, [fullName.trim(), bloodGroup, ageNum, year]);
+        const donor = insertResult.rows[0];
 
-        // Increment total blood units count
-        const stats = await Stats.incrementCount(1);
+        // Atomically increment stats
+        const statsResult = await pool.query(
+            `UPDATE stats SET total_blood_units = total_blood_units + 1, last_updated = NOW() WHERE identifier = 'global' RETURNING total_blood_units, last_updated;`
+        );
 
         console.log(`🩸 New donor registered: ${fullName} (${bloodGroup})`);
 
@@ -111,107 +100,70 @@ app.post('/api/donate', async (req, res) => {
             message: 'Donation registered successfully',
             data: {
                 donor: {
-                    fullName: donor.fullName,
-                    bloodGroup: donor.bloodGroup
+                    fullName: donor.full_name,
+                    bloodGroup: donor.blood_group
                 },
-                totalUnits: stats.totalBloodUnits
+                totalUnits: statsResult.rows[0].total_blood_units
             }
         });
 
     } catch (error) {
         console.error('Error registering donor:', error);
-        
-        // Handle mongoose validation errors
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({
-                success: false,
-                message: messages.join(', ')
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Server error. Please try again later.'
-        });
+        res.status(500).json({ success: false, message: 'Server error. Please try again later.' });
     }
 });
 
-/**
- * GET /api/stats
- * Get total blood units collected
- */
 app.get('/api/stats', async (req, res) => {
     try {
-        const stats = await Stats.getStats();
-        
+        const result = await pool.query(`SELECT total_blood_units, last_updated FROM stats WHERE identifier = 'global' LIMIT 1;`);
+        const stats = result.rows[0] || { total_blood_units: 0, last_updated: null };
+
         res.json({
             success: true,
             data: {
-                totalBloodUnits: stats.totalBloodUnits,
-                lastUpdated: stats.lastUpdated
+                totalBloodUnits: parseInt(stats.total_blood_units, 10),
+                lastUpdated: stats.last_updated
             }
         });
 
     } catch (error) {
         console.error('Error fetching stats:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching statistics'
-        });
+        res.status(500).json({ success: false, message: 'Error fetching statistics' });
     }
 });
 
-/**
- * POST /api/sync-stats
- * Sync stats with actual donor count (admin utility)
- */
 app.post('/api/sync-stats', async (req, res) => {
     try {
-        const donorCount = await Donor.countDocuments();
-        await Stats.findOneAndUpdate(
-            { identifier: 'global' },
-            { totalBloodUnits: donorCount, lastUpdated: new Date() },
-            { upsert: true }
+        const countRes = await pool.query('SELECT COUNT(*)::int AS cnt FROM donors;');
+        const donorCount = countRes.rows[0].cnt;
+
+        await pool.query(
+            `UPDATE stats SET total_blood_units = $1, last_updated = NOW() WHERE identifier = 'global';`,
+            [donorCount]
         );
-        
-        res.json({
-            success: true,
-            message: `Stats synced. Total donors: ${donorCount}`,
-            data: { totalBloodUnits: donorCount }
-        });
+
+        res.json({ success: true, message: `Stats synced. Total donors: ${donorCount}`, data: { totalBloodUnits: donorCount } });
     } catch (error) {
         console.error('Error syncing stats:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error syncing statistics'
-        });
+        res.status(500).json({ success: false, message: 'Error syncing statistics' });
     }
 });
 
-/**
- * GET /api/donors
- * Get list of recent donors (optional endpoint)
- */
 app.get('/api/donors', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
-        const donors = await Donor.find()
-            .select('fullName bloodGroup donatedAt')
-            .sort({ donatedAt: -1 })
-            .limit(limit);
+        const donorsRes = await pool.query(
+            `SELECT full_name AS "fullName", blood_group AS "bloodGroup", donated_at AS "donatedAt"
+             FROM donors
+             ORDER BY donated_at DESC
+             LIMIT $1;`,
+            [limit]
+        );
 
-        res.json({
-            success: true,
-            data: donors
-        });
-
+        res.json({ success: true, data: donorsRes.rows });
     } catch (error) {
         console.error('Error fetching donors:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching donors'
-        });
+        res.status(500).json({ success: false, message: 'Error fetching donors' });
     }
 });
 
@@ -242,10 +194,7 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
-    res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-    });
+    res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
 // ============================================
@@ -253,8 +202,8 @@ app.use((err, req, res, next) => {
 // ============================================
 
 async function startServer() {
-    await connectDB();
-    
+    await initDB();
+
     app.listen(PORT, () => {
         console.log('========================================');
         console.log('🩸 Blood Donation Event Website');

@@ -145,6 +145,40 @@ function formatDate(dateString) {
 // ============================================
 
 /**
+ * Shows a random toast notification after donation
+ * @param {string} name - Donor name
+ */
+function showToast(name) {
+    const messages = [
+        `Thank you ${name}, you saved a life! ❤️`,
+        `${name}, you're a hero! Your donation will save up to 3 lives!`,
+        `Amazing ${name}! You just gave someone a second chance at life!`,
+        `${name}, your generosity will make a huge difference!`,
+        `Thank you ${name}! You're a real-life superhero!`,
+        `${name}, your donation is priceless - you're saving lives!`,
+        `Incredible ${name}! Someone's life just got better because of you!`
+    ];
+    
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.innerHTML = `<span class="toast-icon">❤️</span>${randomMessage}`;
+    
+    document.body.appendChild(toast);
+    
+    // Show toast
+    setTimeout(() => toast.classList.add('show'), 100);
+    
+    // Hide and remove toast after 5 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, 5000);
+}
+
+/**
  * Initializes the donor registration form
  */
 function initRegistrationForm() {
@@ -216,6 +250,9 @@ function initRegistrationForm() {
             });
 
             console.log('Donation successful:', response);
+            
+            // Show toast notification with random message
+            showToast(fullName.value.trim());
             
             // Show success message on form
             formMessage.textContent = 'Registration successful! Thank you!';
@@ -740,6 +777,8 @@ function initAllDonorsModal() {
 // ============================================
 // PAGE INITIALIZATION
 // ============================================
+
+// Theme removed — app is light-only now
 
 /**
  * Determines current page and initializes appropriate functionality

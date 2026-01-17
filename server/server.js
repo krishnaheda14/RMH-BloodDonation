@@ -36,7 +36,11 @@ if (DATABASE_URL) {
         connectionString: DATABASE_URL,
         ssl: {
             rejectUnauthorized: false
-        }
+        },
+        connectionTimeoutMillis: 10000, // 10 second timeout
+        idleTimeoutMillis: 30000, // 30 seconds idle timeout
+        max: 10, // Maximum pool size
+        query_timeout: 30000, // 30 second query timeout
     });
 } else {
     console.warn('⚠️  No DATABASE_URL provided. Database features will be disabled.');

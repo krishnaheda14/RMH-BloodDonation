@@ -92,54 +92,103 @@ async function initDB() {
 // API ROUTES
 // ============================================
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    const health = {
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        database: {
+            configured: !!pool,
+            url_present: !!DATABASE_URL,
+            url_preview: DATABASE_URL ? DATABASE_URL.substring(0, 20) + '...' : 'NOT SET'
+        },
+        environment: {
+            NODE_ENV: process.env.NODE_ENV || 'not set',
+            PORT: PORT,
+            DEBUG: process.env.DEBUG || 'false'
+        }
+    };
+    console.log('Health check:', JSON.stringify(health, null, 2));
+    res.json(health);
+});
+
 app.post('/api/donate', async (req, res) => {
+    console.log('\n=== /api/donate START ===');
+    console.log('Step 1: Handler invoked');
     try {
-        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
-        console.log('Entering /api/donate handler');
+        console.log('Step 2: Checking database pool...');
+        if (!pool) {
+            console.error('Step 2 FAILED: No database pool configured');
+            return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
+        }
+        console.log('Step 2: Pool exists ✓');
+        
+        console.log('Step 3: Extracting request body...');
         const { fullName, bloodGroup, age, year } = req.body;
+        console.log('Step 3: Body extracted ✓', { fullName, bloodGroup, age, year });
 
         // Server-side validation
+        console.log('Step 4: Validating required fields...');
         if (!fullName || !bloodGroup || !age || !year) {
+            console.error('Step 4 FAILED: Missing required fields');
             return res.status(400).json({
                 success: false,
                 message: 'All fields are required'
             });
         }
+        console.log('Step 4: Required fields valid ✓');
 
+        console.log('Step 5: Validating age...');
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 18) {
+            console.error('Step 5 FAILED: Invalid age:', age);
             return res.status(400).json({ success: false, message: 'Donor must be at least 18 years old' });
         }
+        console.log('Step 5: Age valid ✓', ageNum);
 
+        console.log('Step 6: Validating blood group...');
         const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
         if (!validBloodGroups.includes(bloodGroup)) {
+            console.error('Step 6 FAILED: Invalid blood group:', bloodGroup);
             return res.status(400).json({ success: false, message: 'Invalid blood group' });
         }
+        console.log('Step 6: Blood group valid ✓');
 
+        console.log('Step 7: Validating year...');
         const validYears = ['FY', 'SY', 'TY', 'Final Year'];
         if (!validYears.includes(year)) {
+            console.error('Step 7 FAILED: Invalid year:', year);
             return res.status(400).json({ success: false, message: 'Invalid year selection' });
         }
+        console.log('Step 7: Year valid ✓');
 
         // Insert donor into Postgres
+        console.log('Step 8: Preparing database insert...');
         const insertText = `
             INSERT INTO donors (full_name, blood_group, age, year)
             VALUES ($1, $2, $3, $4)
             RETURNING id, full_name, blood_group, donated_at;
         `;
-
-        console.log('DB Insert Query:', insertText.trim());
-        console.log('DB Insert Params:', [fullName.trim(), bloodGroup, ageNum, year]);
+        console.log('Step 8: SQL:', insertText.trim());
+        console.log('Step 8: Params:', [fullName.trim(), bloodGroup, ageNum, year]);
+        
+        console.log('Step 9: Executing insert query...');
         const insertResult = await pool.query(insertText, [fullName.trim(), bloodGroup, ageNum, year]);
+        console.log('Step 9: Insert successful ✓');
         const donor = insertResult.rows[0];
+        console.log('Step 10: Donor row returned:', donor);
 
         // Atomically increment stats
+        console.log('Step 11: Updating stats...');
         const statsResult = await pool.query(
             `UPDATE stats SET total_blood_units = total_blood_units + 1, last_updated = NOW() WHERE identifier = 'global' RETURNING total_blood_units, last_updated;`
         );
+        console.log('Step 11: Stats updated ✓');
 
+        console.log('Step 12: Preparing response...');
         console.log(`🩸 New donor registered: ${fullName} (${bloodGroup})`);
 
+        console.log('Step 13: Sending 201 response...');
         res.status(201).json({
             success: true,
             message: 'Donation registered successfully',
@@ -152,8 +201,16 @@ app.post('/api/donate', async (req, res) => {
             }
         });
 
+        console.log('=== /api/donate SUCCESS ===\n');
     } catch (error) {
-        console.error('Error registering donor:', error && error.stack ? error.stack : error);
+        console.error('\n=== /api/donate ERROR ===');
+        console.error('Error occurred during donor registration');
+        console.error('Error type:', error.constructor.name);
+        console.error('Error message:', error.message);
+        console.error('Full stack:', error.stack);
+        console.error('Error code (if DB):', error.code);
+        console.error('Error detail (if DB):', error.detail);
+        console.error('=========================\n');
         return respondError(res, 500, 'Server error. Please try again later.', error);
     }
 });

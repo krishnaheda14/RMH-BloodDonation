@@ -86,6 +86,42 @@ async function initDB() {
         await pool.query('SELECT 1');
         console.log('✅ Connected to Postgres successfully');
 
+        // Create tables if they don't exist
+        console.log('🔧 Creating database tables if needed...');
+
+        // Create donors table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS donors (
+                id SERIAL PRIMARY KEY,
+                full_name VARCHAR(255) NOT NULL,
+                blood_group VARCHAR(5) NOT NULL CHECK (blood_group IN ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
+                age INTEGER NOT NULL CHECK (age >= 18 AND age <= 100),
+                year VARCHAR(20) NOT NULL CHECK (year IN ('FY', 'SY', 'TY', 'Final Year')),
+                donated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT valid_name CHECK (LENGTH(TRIM(full_name)) >= 2)
+            );
+        `);
+        console.log('✅ Donors table ensured');
+
+        // Create indexes
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_donors_donated_at ON donors(donated_at DESC);
+        `);
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_donors_blood_group ON donors(blood_group);
+        `);
+        console.log('✅ Donor indexes ensured');
+
+        // Create stats table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS stats (
+                identifier VARCHAR(50) PRIMARY KEY,
+                total_blood_units INTEGER DEFAULT 0 CHECK (total_blood_units >= 0),
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('✅ Stats table ensured');
+
         // Ensure stats row exists
         await pool.query(
             `INSERT INTO stats (identifier, total_blood_units)
@@ -94,8 +130,10 @@ async function initDB() {
         );
 
         console.log('✅ Stats row ensured');
+        console.log('🎉 Database initialization complete!');
     } catch (error) {
         console.error('❌ Postgres connection error:', error.message);
+        console.error('Full error:', error);
         // Do not exit the process in serverless/prod — keep server running and surface errors on API calls
     }
 }
@@ -134,7 +172,7 @@ app.post('/api/donate', async (req, res) => {
             return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         }
         console.log('Step 2: Pool exists ✓');
-        
+
         console.log('Step 3: Extracting request body...');
         const { fullName, bloodGroup, age, year } = req.body;
         console.log('Step 3: Body extracted ✓', { fullName, bloodGroup, age, year });
@@ -183,7 +221,7 @@ app.post('/api/donate', async (req, res) => {
         `;
         console.log('Step 8: SQL:', insertText.trim());
         console.log('Step 8: Params:', [fullName.trim(), bloodGroup, ageNum, year]);
-        
+
         console.log('Step 9: Executing insert query...');
         const insertResult = await pool.query(insertText, [fullName.trim(), bloodGroup, ageNum, year]);
         console.log('Step 9: Insert successful ✓');

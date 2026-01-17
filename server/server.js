@@ -50,6 +50,18 @@ app.use((req, res, next) => {
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Helper to send errors with optional debug info (enable by setting DEBUG=true)
+function respondError(res, status, userMessage, error) {
+    const payload = { success: false, message: userMessage };
+    if (process.env.DEBUG === 'true' && error) {
+        payload._debug = {
+            message: error.message || String(error),
+            stack: error.stack || null
+        };
+    }
+    return res.status(status).json(payload);
+}
+
 // Logo is now served from public/logo.png as static file
 
 async function initDB() {
@@ -142,8 +154,7 @@ app.post('/api/donate', async (req, res) => {
 
     } catch (error) {
         console.error('Error registering donor:', error && error.stack ? error.stack : error);
-        // send minimal error message but keep logs detailed server-side
-        res.status(500).json({ success: false, message: 'Server error. Please try again later.' });
+        return respondError(res, 500, 'Server error. Please try again later.', error);
     }
 });
 
@@ -166,7 +177,7 @@ app.get('/api/stats', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching stats:', error && error.stack ? error.stack : error);
-        res.status(500).json({ success: false, message: 'Error fetching statistics' });
+        return respondError(res, 500, 'Error fetching statistics', error);
     }
 });
 
@@ -187,7 +198,7 @@ app.post('/api/sync-stats', async (req, res) => {
         res.json({ success: true, message: `Stats synced. Total donors: ${donorCount}`, data: { totalBloodUnits: donorCount } });
     } catch (error) {
         console.error('Error syncing stats:', error && error.stack ? error.stack : error);
-        res.status(500).json({ success: false, message: 'Error syncing statistics' });
+        return respondError(res, 500, 'Error syncing statistics', error);
     }
 });
 
@@ -206,8 +217,8 @@ app.get('/api/donors', async (req, res) => {
 
         res.json({ success: true, data: donorsRes.rows });
     } catch (error) {
-        console.error('Error fetching donors:', error);
-        res.status(500).json({ success: false, message: 'Error fetching donors' });
+        console.error('Error fetching donors:', error && error.stack ? error.stack : error);
+        return respondError(res, 500, 'Error fetching donors', error);
     }
 });
 

@@ -28,6 +28,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Simple request logger for debugging
+app.use((req, res, next) => {
+    const now = new Date().toISOString();
+    console.log(`[${now}] --> ${req.method} ${req.originalUrl} from ${req.ip}`);
+    // capture body for POST requests (avoid logging in production)
+    if (req.method === 'POST') {
+        try {
+            console.log('     Body:', JSON.stringify(req.body));
+        } catch (e) {
+            console.log('     Body: (could not stringify)');
+        }
+    }
+    // hook into response finish to log status
+    res.on('finish', () => {
+        console.log(`[${now}] <-- ${req.method} ${req.originalUrl} ${res.statusCode}`);
+    });
+    next();
+});
+
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -64,6 +83,7 @@ async function initDB() {
 app.post('/api/donate', async (req, res) => {
     try {
         if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
+        console.log('Entering /api/donate handler');
         const { fullName, bloodGroup, age, year } = req.body;
 
         // Server-side validation
@@ -96,6 +116,8 @@ app.post('/api/donate', async (req, res) => {
             RETURNING id, full_name, blood_group, donated_at;
         `;
 
+        console.log('DB Insert Query:', insertText.trim());
+        console.log('DB Insert Params:', [fullName.trim(), bloodGroup, ageNum, year]);
         const insertResult = await pool.query(insertText, [fullName.trim(), bloodGroup, ageNum, year]);
         const donor = insertResult.rows[0];
 
@@ -119,15 +141,19 @@ app.post('/api/donate', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error registering donor:', error);
+        console.error('Error registering donor:', error && error.stack ? error.stack : error);
+        // send minimal error message but keep logs detailed server-side
         res.status(500).json({ success: false, message: 'Server error. Please try again later.' });
     }
 });
 
 app.get('/api/stats', async (req, res) => {
     try {
+        console.log('Entering /api/stats handler');
         if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
-        const result = await pool.query(`SELECT total_blood_units, last_updated FROM stats WHERE identifier = 'global' LIMIT 1;`);
+        const sql = `SELECT total_blood_units, last_updated FROM stats WHERE identifier = 'global' LIMIT 1;`;
+        console.log('DB Stats Query:', sql);
+        const result = await pool.query(sql);
         const stats = result.rows[0] || { total_blood_units: 0, last_updated: null };
 
         res.json({
@@ -139,15 +165,18 @@ app.get('/api/stats', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching stats:', error && error.stack ? error.stack : error);
         res.status(500).json({ success: false, message: 'Error fetching statistics' });
     }
 });
 
 app.post('/api/sync-stats', async (req, res) => {
     try {
+        console.log('Entering /api/sync-stats handler');
         if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
-        const countRes = await pool.query('SELECT COUNT(*)::int AS cnt FROM donors;');
+        const countSql = 'SELECT COUNT(*)::int AS cnt FROM donors;';
+        console.log('DB Count Query:', countSql);
+        const countRes = await pool.query(countSql);
         const donorCount = countRes.rows[0].cnt;
 
         await pool.query(
@@ -157,22 +186,23 @@ app.post('/api/sync-stats', async (req, res) => {
 
         res.json({ success: true, message: `Stats synced. Total donors: ${donorCount}`, data: { totalBloodUnits: donorCount } });
     } catch (error) {
-        console.error('Error syncing stats:', error);
+        console.error('Error syncing stats:', error && error.stack ? error.stack : error);
         res.status(500).json({ success: false, message: 'Error syncing statistics' });
     }
 });
 
 app.get('/api/donors', async (req, res) => {
     try {
+        console.log('Entering /api/donors handler, query:', req.query);
         if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         const limit = parseInt(req.query.limit) || 10;
-        const donorsRes = await pool.query(
-            `SELECT full_name AS "fullName", blood_group AS "bloodGroup", donated_at AS "donatedAt"
+        const donorsSql = `
+            SELECT full_name AS "fullName", blood_group AS "bloodGroup", donated_at AS "donatedAt"
              FROM donors
              ORDER BY donated_at DESC
-             LIMIT $1;`,
-            [limit]
-        );
+             LIMIT $1;`;
+        console.log('DB Donors Query:', donorsSql.trim(), 'Params:', [limit]);
+        const donorsRes = await pool.query(donorsSql, [limit]);
 
         res.json({ success: true, data: donorsRes.rows });
     } catch (error) {
@@ -230,3 +260,12 @@ async function startServer() {
 }
 
 startServer();
+
+// Global error handlers for debugging
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason && reason.stack ? reason.stack : reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+});

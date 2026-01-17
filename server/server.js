@@ -1,10 +1,10 @@
 /**
- * Blood Donation Event Website - Server (Postgres)
- * Express.js backend using Postgres (pg)
+ * Blood Donation Event Website - Server (MongoDB)
+ * Express.js backend using MongoDB Atlas
  */
 
 const express = require('express');
-const { Pool } = require('pg');
+const { MongoClient } = require('mongodb');
 const cors = require('cors');
 const path = require('path');
 
@@ -18,32 +18,71 @@ const PORT = process.env.PORT || 3000;
 // Wrap in try/catch so absence of the `dotenv` package doesn't crash production.
 try {
     if (process.env.NODE_ENV !== 'production') {
-        require('dotenv').config({ path: path.join(__dirname, '.env') });
-        console.log('📝 Loaded .env file from:', path.join(__dirname, '.env'));
+        require('dotenv').config();
     }
 } catch (e) {
     // dotenv not installed or failed to load — ignore in production environments
-    console.log('⚠️  dotenv not loaded:', e.message);
 }
 
-// Use only the environment-provided DATABASE_URL. Do NOT fall back to a hardcoded value.
-const DATABASE_URL = process.env.DATABASE_URL;
+// MongoDB configuration
+const MONGODB_URI = process.env.MONGODB_URI;
+let mongoClient = null;
+let mongoDB = null;
+let donorsCollection = null;
+let statsCollection = null;
 
-// Postgres pool (create only if DATABASE_URL provided)
-let pool = null;
-if (DATABASE_URL) {
-    pool = new Pool({
-        connectionString: DATABASE_URL,
-        ssl: {
-            rejectUnauthorized: false
-        },
-        connectionTimeoutMillis: 10000, // 10 second timeout
-        idleTimeoutMillis: 30000, // 30 seconds idle timeout
-        max: 10, // Maximum pool size
-        query_timeout: 30000, // 30 second query timeout
-    });
-} else {
-    console.warn('⚠️  No DATABASE_URL provided. Database features will be disabled.');
+async function initMongo() {
+    try {
+        if (!MONGODB_URI) {
+            console.error('❌ MONGODB_URI not provided. Database will not work.');
+            return;
+        }
+        
+        console.log('🔄 Connecting to MongoDB Atlas...');
+        mongoClient = new MongoClient(MONGODB_URI);
+        await mongoClient.connect();
+        
+        // Get database (from URI or default to 'blood_donation')
+        mongoDB = mongoClient.db();
+        donorsCollection = mongoDB.collection('donors');
+        statsCollection = mongoDB.collection('stats');
+
+        console.log('✅ Connected to MongoDB Atlas successfully');
+
+        // Ensure stats document exists with initial value
+        const statsDoc = await statsCollection.findOne({ identifier: 'global' });
+        if (!statsDoc) {
+            await statsCollection.insertOne({
+                identifier: 'global',
+                total_blood_units: 0,
+                last_updated: new Date()
+            });
+            console.log('✅ Created initial stats document');
+        } else {
+            console.log('✅ Stats document exists');
+        }
+        
+        // Create indexes for performance
+        await donorsCollection.createIndex({ donatedAt: -1 });
+        await donorsCollection.createIndex({ bloodGroup: 1 });
+        console.log('✅ Database indexes created');
+        
+    } catch (e) {
+        console.error('❌ MongoDB initialization error:', e.message);
+        console.error('Stack:', e.stack);
+        // Keep server running; surface errors on API calls
+    }
+}
+
+async function shutdownMongo() {
+    try {
+        if (mongoClient) {
+            await mongoClient.close();
+            console.log('MongoDB connection closed');
+        }
+    } catch (e) {
+        console.error('Error closing MongoDB:', e.message);
+    }
 }
 
 // Middleware
@@ -56,7 +95,7 @@ app.use((req, res, next) => {
     const now = new Date().toISOString();
     console.log(`[${now}] --> ${req.method} ${req.originalUrl} from ${req.ip}`);
     // capture body for POST requests (avoid logging in production)
-    if (req.method === 'POST') {
+    if (req.method === 'POST' && process.env.DEBUG === 'true') {
         try {
             console.log('     Body:', JSON.stringify(req.body));
         } catch (e) {
@@ -85,70 +124,6 @@ function respondError(res, status, userMessage, error) {
     return res.status(status).json(payload);
 }
 
-// Logo is now served from public/logo.png as static file
-
-async function initDB() {
-    try {
-        if (!pool) {
-            console.log('ℹ️  Skipping DB initialization because no pool is configured.');
-            return;
-        }
-
-        await pool.query('SELECT 1');
-        console.log('✅ Connected to Postgres successfully');
-
-        // Create tables if they don't exist
-        console.log('🔧 Creating database tables if needed...');
-
-        // Create donors table
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS donors (
-                id SERIAL PRIMARY KEY,
-                full_name VARCHAR(255) NOT NULL,
-                blood_group VARCHAR(5) NOT NULL CHECK (blood_group IN ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
-                age INTEGER NOT NULL CHECK (age >= 18 AND age <= 100),
-                year VARCHAR(20) NOT NULL CHECK (year IN ('FY', 'SY', 'TY', 'Final Year')),
-                donated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT valid_name CHECK (LENGTH(TRIM(full_name)) >= 2)
-            );
-        `);
-        console.log('✅ Donors table ensured');
-
-        // Create indexes
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_donors_donated_at ON donors(donated_at DESC);
-        `);
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_donors_blood_group ON donors(blood_group);
-        `);
-        console.log('✅ Donor indexes ensured');
-
-        // Create stats table
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS stats (
-                identifier VARCHAR(50) PRIMARY KEY,
-                total_blood_units INTEGER DEFAULT 0 CHECK (total_blood_units >= 0),
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-        console.log('✅ Stats table ensured');
-
-        // Ensure stats row exists
-        await pool.query(
-            `INSERT INTO stats (identifier, total_blood_units)
-             VALUES ('global', 0)
-             ON CONFLICT (identifier) DO NOTHING;`
-        );
-
-        console.log('✅ Stats row ensured');
-        console.log('🎉 Database initialization complete!');
-    } catch (error) {
-        console.error('❌ Postgres connection error:', error.message);
-        console.error('Full error:', error);
-        // Do not exit the process in serverless/prod — keep server running and surface errors on API calls
-    }
-}
-
 // ============================================
 // API ROUTES
 // ============================================
@@ -159,12 +134,16 @@ app.get('/api/health', (req, res) => {
         status: 'running',
         timestamp: new Date().toISOString(),
         database: {
-            configured: !!pool,
-            url_present: !!DATABASE_URL,
-            url_preview: DATABASE_URL ? DATABASE_URL.substring(0, 20) + '...' : 'NOT SET'
+            type: 'MongoDB Atlas',
+            configured: !!mongoClient,
+            connected: !!mongoDB,
+            collections: {
+                donors: !!donorsCollection,
+                stats: !!statsCollection
+            }
         },
         environment: {
-            NODE_ENV: process.env.NODE_ENV || 'not set',
+            NODE_ENV: process.env.NODE_ENV || 'development',
             PORT: PORT,
             DEBUG: process.env.DEBUG || 'false'
         }
@@ -173,17 +152,22 @@ app.get('/api/health', (req, res) => {
     res.json(health);
 });
 
+// Donate endpoint - register new donor
 app.post('/api/donate', async (req, res) => {
     console.log('\n=== /api/donate START ===');
     console.log('Step 1: Handler invoked');
+    
     try {
-        console.log('Step 2: Checking database pool...');
-        if (!pool) {
-            console.error('Step 2 FAILED: No database pool configured');
-            return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
+        console.log('Step 2: Checking MongoDB connection...');
+        if (!donorsCollection || !statsCollection) {
+            console.error('Step 2 FAILED: MongoDB not connected');
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Database not configured. Please contact administrator.' 
+            });
         }
-        console.log('Step 2: Pool exists ✓');
-
+        console.log('Step 2: MongoDB connected ✓');
+        
         console.log('Step 3: Extracting request body...');
         const { fullName, bloodGroup, age, year } = req.body;
         console.log('Step 3: Body extracted ✓', { fullName, bloodGroup, age, year });
@@ -203,7 +187,10 @@ app.post('/api/donate', async (req, res) => {
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 18) {
             console.error('Step 5 FAILED: Invalid age:', age);
-            return res.status(400).json({ success: false, message: 'Donor must be at least 18 years old' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Donor must be at least 18 years old' 
+            });
         }
         console.log('Step 5: Age valid ✓', ageNum);
 
@@ -211,7 +198,10 @@ app.post('/api/donate', async (req, res) => {
         const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
         if (!validBloodGroups.includes(bloodGroup)) {
             console.error('Step 6 FAILED: Invalid blood group:', bloodGroup);
-            return res.status(400).json({ success: false, message: 'Invalid blood group' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid blood group' 
+            });
         }
         console.log('Step 6: Blood group valid ✓');
 
@@ -219,123 +209,177 @@ app.post('/api/donate', async (req, res) => {
         const validYears = ['FY', 'SY', 'TY', 'Final Year'];
         if (!validYears.includes(year)) {
             console.error('Step 7 FAILED: Invalid year:', year);
-            return res.status(400).json({ success: false, message: 'Invalid year selection' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid year selection' 
+            });
         }
         console.log('Step 7: Year valid ✓');
 
-        // Insert donor into Postgres
-        console.log('Step 8: Preparing database insert...');
-        const insertText = `
-            INSERT INTO donors (full_name, blood_group, age, year)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, full_name, blood_group, donated_at;
-        `;
-        console.log('Step 8: SQL:', insertText.trim());
-        console.log('Step 8: Params:', [fullName.trim(), bloodGroup, ageNum, year]);
+        // Insert donor into MongoDB
+        console.log('Step 8: Inserting donor into MongoDB...');
+        const donorDoc = {
+            fullName: fullName.trim(),
+            bloodGroup,
+            age: ageNum,
+            year,
+            donatedAt: new Date()
+        };
+        
+        const result = await donorsCollection.insertOne(donorDoc);
+        console.log('Step 9: Insert successful ✓', result.insertedId);
 
-        console.log('Step 9: Executing insert query...');
-        const insertResult = await pool.query(insertText, [fullName.trim(), bloodGroup, ageNum, year]);
-        console.log('Step 9: Insert successful ✓');
-        const donor = insertResult.rows[0];
-        console.log('Step 10: Donor row returned:', donor);
-
-        // Atomically increment stats
-        console.log('Step 11: Updating stats...');
-        const statsResult = await pool.query(
-            `UPDATE stats SET total_blood_units = total_blood_units + 1, last_updated = NOW() WHERE identifier = 'global' RETURNING total_blood_units, last_updated;`
+        // Update stats atomically
+        console.log('Step 10: Updating MongoDB stats...');
+        const statsRes = await statsCollection.findOneAndUpdate(
+            { identifier: 'global' },
+            { 
+                $inc: { total_blood_units: 1 }, 
+                $set: { last_updated: new Date() } 
+            },
+            { 
+                returnDocument: 'after', 
+                upsert: true 
+            }
         );
-        console.log('Step 11: Stats updated ✓');
+        
+        const totalUnits = statsRes.value ? statsRes.value.total_blood_units : 1;
+        console.log('Step 10: MongoDB stats updated ✓', { totalUnits });
 
-        console.log('Step 12: Preparing response...');
-        console.log(`🩸 New donor registered: ${fullName} (${bloodGroup})`);
+        console.log('Step 11: Preparing response...');
+        console.log(`🩸 New donor registered: ${fullName.trim()} (${bloodGroup})`);
 
-        console.log('Step 13: Sending 201 response...');
+        console.log('Step 12: Sending 201 response...');
         res.status(201).json({
             success: true,
             message: 'Donation registered successfully',
             data: {
                 donor: {
-                    fullName: donor.full_name,
-                    bloodGroup: donor.blood_group
+                    fullName: fullName.trim(),
+                    bloodGroup: bloodGroup
                 },
-                totalUnits: statsResult.rows[0].total_blood_units
+                totalUnits: totalUnits
             }
         });
 
         console.log('=== /api/donate SUCCESS ===\n');
+        
     } catch (error) {
         console.error('\n=== /api/donate ERROR ===');
         console.error('Error occurred during donor registration');
         console.error('Error type:', error.constructor.name);
         console.error('Error message:', error.message);
         console.error('Full stack:', error.stack);
-        console.error('Error code (if DB):', error.code);
-        console.error('Error detail (if DB):', error.detail);
         console.error('=========================\n');
         return respondError(res, 500, 'Server error. Please try again later.', error);
     }
 });
 
+// Get statistics
 app.get('/api/stats', async (req, res) => {
     try {
         console.log('Entering /api/stats handler');
-        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
-        const sql = `SELECT total_blood_units, last_updated FROM stats WHERE identifier = 'global' LIMIT 1;`;
-        console.log('DB Stats Query:', sql);
-        const result = await pool.query(sql);
-        const stats = result.rows[0] || { total_blood_units: 0, last_updated: null };
-
-        res.json({
-            success: true,
-            data: {
-                totalBloodUnits: parseInt(stats.total_blood_units, 10),
-                lastUpdated: stats.last_updated
-            }
+        
+        if (!statsCollection) {
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Database not configured' 
+            });
+        }
+        
+        const doc = await statsCollection.findOne({ identifier: 'global' });
+        const total = doc ? parseInt(doc.total_blood_units || 0, 10) : 0;
+        const lastUpdated = doc ? doc.last_updated : null;
+        
+        console.log('Stats fetched:', { total, lastUpdated });
+        
+        res.json({ 
+            success: true, 
+            data: { 
+                totalBloodUnits: total, 
+                lastUpdated: lastUpdated 
+            } 
         });
-
+        
     } catch (error) {
-        console.error('Error fetching stats:', error && error.stack ? error.stack : error);
+        console.error('Error fetching stats:', error.stack);
         return respondError(res, 500, 'Error fetching statistics', error);
     }
 });
 
+// Sync stats (recount from donors collection)
 app.post('/api/sync-stats', async (req, res) => {
     try {
         console.log('Entering /api/sync-stats handler');
-        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
-        const countSql = 'SELECT COUNT(*)::int AS cnt FROM donors;';
-        console.log('DB Count Query:', countSql);
-        const countRes = await pool.query(countSql);
-        const donorCount = countRes.rows[0].cnt;
-
-        await pool.query(
-            `UPDATE stats SET total_blood_units = $1, last_updated = NOW() WHERE identifier = 'global';`,
-            [donorCount]
+        
+        if (!donorsCollection || !statsCollection) {
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Database not configured' 
+            });
+        }
+        
+        const donorCount = await donorsCollection.countDocuments();
+        console.log('Total donors counted:', donorCount);
+        
+        await statsCollection.updateOne(
+            { identifier: 'global' },
+            { 
+                $set: { 
+                    total_blood_units: donorCount, 
+                    last_updated: new Date() 
+                } 
+            },
+            { upsert: true }
         );
-
-        res.json({ success: true, message: `Stats synced. Total donors: ${donorCount}`, data: { totalBloodUnits: donorCount } });
+        
+        console.log('Stats synced successfully');
+        
+        res.json({ 
+            success: true, 
+            message: `Stats synced. Total donors: ${donorCount}`, 
+            data: { totalBloodUnits: donorCount } 
+        });
+        
     } catch (error) {
-        console.error('Error syncing stats:', error && error.stack ? error.stack : error);
+        console.error('Error syncing stats:', error.stack);
         return respondError(res, 500, 'Error syncing statistics', error);
     }
 });
 
+// Get recent donors
 app.get('/api/donors', async (req, res) => {
     try {
         console.log('Entering /api/donors handler, query:', req.query);
-        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
+        
+        if (!donorsCollection) {
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Database not configured' 
+            });
+        }
+        
         const limit = parseInt(req.query.limit) || 10;
-        const donorsSql = `
-            SELECT full_name AS "fullName", blood_group AS "bloodGroup", donated_at AS "donatedAt"
-             FROM donors
-             ORDER BY donated_at DESC
-             LIMIT $1;`;
-        console.log('DB Donors Query:', donorsSql.trim(), 'Params:', [limit]);
-        const donorsRes = await pool.query(donorsSql, [limit]);
-
-        res.json({ success: true, data: donorsRes.rows });
+        console.log('Fetching donors with limit:', limit);
+        
+        const docs = await donorsCollection
+            .find()
+            .sort({ donatedAt: -1 })
+            .limit(limit)
+            .toArray();
+        
+        const mapped = docs.map(d => ({ 
+            fullName: d.fullName, 
+            bloodGroup: d.bloodGroup, 
+            donatedAt: d.donatedAt 
+        }));
+        
+        console.log(`Fetched ${mapped.length} donors`);
+        
+        res.json({ success: true, data: mapped });
+        
     } catch (error) {
-        console.error('Error fetching donors:', error && error.stack ? error.stack : error);
+        console.error('Error fetching donors:', error.stack);
         return respondError(res, 500, 'Error fetching donors', error);
     }
 });
@@ -375,7 +419,7 @@ app.use((err, req, res, next) => {
 // ============================================
 
 async function startServer() {
-    await initDB();
+    await initMongo();
 
     app.listen(PORT, () => {
         console.log('========================================');
@@ -397,4 +441,17 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    await shutdownMongo();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT received, shutting down gracefully...');
+    await shutdownMongo();
+    process.exit(0);
 });

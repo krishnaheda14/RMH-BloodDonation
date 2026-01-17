@@ -34,10 +34,22 @@ async function apiRequest(endpoint, options = {}) {
             ...options
         });
 
-        const data = await response.json();
+        // Try to parse JSON only when content-type is application/json
+        const contentType = response.headers.get('content-type') || '';
+        let data = null;
+
+        if (contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            // Non-JSON response (likely an error HTML/text). Read as text for debugging.
+            const text = await response.text();
+            // Attach rawText for upstream handling
+            data = { rawText: text };
+        }
 
         if (!response.ok) {
-            throw new Error(data.message || 'Request failed');
+            const msg = data && data.message ? data.message : (data && data.rawText ? data.rawText : 'Request failed');
+            throw new Error(msg);
         }
 
         return data;

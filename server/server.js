@@ -13,10 +13,15 @@ const app = express();
 
 // Configuration
 const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:PHBXsQjLfePb3jo4@db.lwgnhieekdjtnvpxqull.supabase.co:5432/postgres';
+const DATABASE_URL = process.env.DATABASE_URL || null;
 
-// Postgres pool
-const pool = new Pool({ connectionString: DATABASE_URL });
+// Postgres pool (create only if DATABASE_URL provided)
+let pool = null;
+if (DATABASE_URL) {
+    pool = new Pool({ connectionString: DATABASE_URL });
+} else {
+    console.warn('⚠️  No DATABASE_URL provided. Database features will be disabled.');
+}
 
 // Middleware
 app.use(cors());
@@ -30,6 +35,11 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 async function initDB() {
     try {
+        if (!pool) {
+            console.log('ℹ️  Skipping DB initialization because no pool is configured.');
+            return;
+        }
+
         await pool.query('SELECT 1');
         console.log('✅ Connected to Postgres successfully');
 
@@ -43,7 +53,7 @@ async function initDB() {
         console.log('✅ Stats row ensured');
     } catch (error) {
         console.error('❌ Postgres connection error:', error.message);
-        process.exit(1);
+        // Do not exit the process in serverless/prod — keep server running and surface errors on API calls
     }
 }
 
@@ -53,6 +63,7 @@ async function initDB() {
 
 app.post('/api/donate', async (req, res) => {
     try {
+        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         const { fullName, bloodGroup, age, year } = req.body;
 
         // Server-side validation
@@ -115,6 +126,7 @@ app.post('/api/donate', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
     try {
+        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         const result = await pool.query(`SELECT total_blood_units, last_updated FROM stats WHERE identifier = 'global' LIMIT 1;`);
         const stats = result.rows[0] || { total_blood_units: 0, last_updated: null };
 
@@ -134,6 +146,7 @@ app.get('/api/stats', async (req, res) => {
 
 app.post('/api/sync-stats', async (req, res) => {
     try {
+        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         const countRes = await pool.query('SELECT COUNT(*)::int AS cnt FROM donors;');
         const donorCount = countRes.rows[0].cnt;
 
@@ -151,6 +164,7 @@ app.post('/api/sync-stats', async (req, res) => {
 
 app.get('/api/donors', async (req, res) => {
     try {
+        if (!pool) return res.status(500).json({ success: false, message: 'Database not configured. Please set DATABASE_URL.' });
         const limit = parseInt(req.query.limit) || 10;
         const donorsRes = await pool.query(
             `SELECT full_name AS "fullName", blood_group AS "bloodGroup", donated_at AS "donatedAt"

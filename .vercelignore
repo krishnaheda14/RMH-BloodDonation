@@ -1,0 +1,6 @@
+.vercelignore — files and folders excluded from Vercel deployments
+# Exclude local test scripts, backups and environment files from deployment
+tests/
+*.bak
+.env
+*.log

@@ -26,6 +26,10 @@ try {
 
 // MongoDB configuration
 const MONGODB_URI = process.env.MONGODB_URI;
+// Warn if legacy DATABASE_URL is still set in environment (it should be removed)
+if (process.env.DATABASE_URL) {
+    console.warn('⚠️  Environment variable DATABASE_URL is set. If you migrated to MongoDB, remove DATABASE_URL from Vercel to avoid legacy connection attempts.');
+}
 let mongoClient = null;
 let mongoDB = null;
 let donorsCollection = null;
@@ -37,11 +41,55 @@ async function initMongo() {
             console.error('❌ MONGODB_URI not provided. Database will not work.');
             return;
         }
-        
+
         console.log('🔄 Connecting to MongoDB Atlas...');
-        mongoClient = new MongoClient(MONGODB_URI);
-        await mongoClient.connect();
-        
+
+        // Add conservative connection options to improve TLS/server selection behavior
+        const clientOpts = {
+            // Enforce TLS (SRV URIs imply TLS but be explicit)
+            tls: true,
+            // Shorter server selection timeout so failures surface quickly in logs
+            serverSelectionTimeoutMS: 10000,
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 30000
+        };
+
+        mongoClient = new MongoClient(MONGODB_URI, clientOpts);
+
+        try {
+            await mongoClient.connect();
+        } catch (connectErr) {
+            // Augment error logs with local runtime details to diagnose TLS issues
+            console.error('❌ MongoDB connect() failed. Detailed diagnostics:');
+            console.error('- Error message:', connectErr && connectErr.message);
+            console.error('- Error name/code:', connectErr && connectErr.name, connectErr && connectErr.code);
+            console.error('- Node.js version:', process.version);
+            console.error('- OpenSSL version:', process.versions.openssl || 'unknown');
+
+            // Try to extract hostname for DNS lookup if using SRV or standard URI
+            try {
+                const uri = MONGODB_URI;
+                // Remove protocol and credentials
+                const hostPart = uri.replace(/^mongodb(?:\+srv)?:\/\//, '').split('/')[0];
+                const hostCandidate = hostPart.split('@').pop().split(':')[0];
+                if (hostCandidate) {
+                    const dns = require('dns');
+                    dns.lookup(hostCandidate, (err, address, family) => {
+                        if (err) {
+                            console.error(`- DNS lookup for ${hostCandidate} failed:`, err && err.message);
+                        } else {
+                            console.error(`- Resolved ${hostCandidate} -> ${address} (family ${family})`);
+                        }
+                    });
+                }
+            } catch (dx) {
+                console.error('- Hostname extraction failed:', dx && dx.message);
+            }
+
+            // Re-throw so the outer catch logs and surfaces the problem in deploy logs
+            throw connectErr;
+        }
+
         // Get database (from URI or default to 'blood_donation')
         mongoDB = mongoClient.db();
         donorsCollection = mongoDB.collection('donors');
@@ -61,15 +109,15 @@ async function initMongo() {
         } else {
             console.log('✅ Stats document exists');
         }
-        
+
         // Create indexes for performance
         await donorsCollection.createIndex({ donatedAt: -1 });
         await donorsCollection.createIndex({ bloodGroup: 1 });
         console.log('✅ Database indexes created');
-        
+
     } catch (e) {
-        console.error('❌ MongoDB initialization error:', e.message);
-        console.error('Stack:', e.stack);
+        console.error('❌ MongoDB initialization error:', e && e.message);
+        console.error('Full stack:', e && e.stack);
         // Keep server running; surface errors on API calls
     }
 }

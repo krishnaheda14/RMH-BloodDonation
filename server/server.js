@@ -451,8 +451,15 @@ module.exports = async function vercelHandler(req, res) {
     }
 };
 
-// Also provide the raw express app for other hosting environments
+// Also provide the raw express app and startServer for other hosting environments
 module.exports.app = app;
+module.exports.startServer = startServer;
+
+// Export multiple identifiers to satisfy different serverless loaders (Vercel expects an export)
+const vercelHandler = module.exports;
+module.exports = vercelHandler;
+module.exports.default = vercelHandler;
+module.exports.handler = vercelHandler;
 
 // Global error handlers for debugging
 process.on('unhandledRejection', (reason, promise) => {
